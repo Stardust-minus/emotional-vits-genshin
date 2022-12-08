@@ -5,6 +5,10 @@
 在线demo ↑↑↑  [bilibili demo](https://www.bilibili.com/video/BV1Vg411h7of)
 
 数据集无需任何情感标注，通过[情感提取模型](https://github.com/audeering/w2v2-how-to) 提取语句情感embedding输入网络，实现情感可控的VITS合成
+如下所述，因本模型内所含speaker过多，故尚未实现对每个人物的精细情感聚类。
+目前仅将各speaker的TTS Generate情感映射到了训练（验证）集，使之初步符合该speaker说话风格。
+API正在开发
+
 ## 模型结构
 + 相对于原版VITS仅修改了TextEncoder部分
 ![image-20221029104949567](resources/out.png)
