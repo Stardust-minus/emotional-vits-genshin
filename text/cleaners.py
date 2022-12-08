@@ -1,175 +1,166 @@
+""" from https://github.com/keithito/tacotron """
+
+'''
+Cleaners are transformations that run over the input text at both training and eval time.
+
+Cleaners can be selected by passing a comma-delimited list of cleaner names as the "cleaners"
+hyperparameter. Some cleaners are English-specific. You'll typically want to use:
+  1. "english_cleaners" for English text
+  2. "transliteration_cleaners" for non-English text that can be transliterated to ASCII using
+     the Unidecode library (https://pypi.python.org/pypi/Unidecode)
+  3. "basic_cleaners" if you do not want to transliterate (in this case, you should also update
+     the symbols in symbols.py to match your data).
+'''
+
 import re
-from text.japanese import japanese_to_romaji_with_accent, japanese_to_ipa, japanese_to_ipa2, japanese_to_ipa3
-from text.mandarin import number_to_chinese, chinese_to_bopomofo, latin_to_bopomofo, chinese_to_romaji, chinese_to_lazy_ipa, chinese_to_ipa, chinese_to_ipa2
-# from text.sanskrit import devanagari_to_ipa
-# from text.english import english_to_lazy_ipa, english_to_ipa2, english_to_lazy_ipa2
-# from text.thai import num_to_thai, latin_to_thai
-# from text.shanghainese import shanghainese_to_ipa
-# from text.cantonese import cantonese_to_ipa
-# from text.ngu_dialect import ngu_dialect_to_ipa
+from unidecode import unidecode
+from phonemizer import phonemize
+from pypinyin import pinyin, lazy_pinyin, load_phrases_dict, Style, load_single_dict
+from pypinyin.style._utils import get_finals, get_initials
+from pypinyin_dict.phrase_pinyin_data import cc_cedict
+from pypinyin_dict.pinyin_data import kmandarin_8105
+import jieba
+kmandarin_8105.load()
+cc_cedict.load()
+PHRASE_LIST = [
+  "琴", "安柏", "丽莎", "凯亚", "芭芭拉", "迪卢克", "雷泽", "温迪", "可莉", "班尼特", "诺艾尔", "菲谢尔",
+  "砂糖", "莫娜", "迪奥娜", "阿贝多", "罗莎莉亚", "优菈", "魈", "北斗", "凝光", "香菱", "行秋", "重云",
+  "七七", "刻晴", "达达利亚", "钟离", "辛焱", "甘雨", "胡桃", "烟绯", "申鹤", "云堇", "夜兰", "神里绫华",
+  "神里", "绫华", "枫原万叶", "枫原", "万叶", "宵宫", "早柚", "雷电将军", "九条裟罗", "九条", "裟罗", "珊瑚宫心海",
+  "珊瑚宫", "心海", "托马", "荒泷", "一斗", "荒泷派", "五郎", "八重神子", "神子", "神里绫人", "绫人",
+  "久岐忍", "鹿野院平藏", "平藏", "蒙德", "璃月", "稻妻", "北风的王狼", "风魔龙", "特瓦林", "若陀龙王", "龙脊雪山",
+  "金苹果群岛", "渊下宫", "层岩巨渊", "奥赛尔", "七天神像", "钩钩果", "落落莓", "塞西莉亚花", "风车菊", "尘歌壶",
+  "提瓦特", "明冠山地", "风龙废墟", "明冠峡", "坠星山谷", "果酒湖", "望风山地", "坎瑞亚", "须弥", "枫丹", "纳塔",
+  "至冬", "丘丘人", "丘丘暴徒", "深渊法师", "深渊咏者", "盗宝团", "愚人众", "深渊教团", "骗骗花", "急冻树", "龙蜥",
+  "鸣神岛", "神无冢", "八酝岛", "海祇岛", "清籁岛", "鹤观", "绝云间", "群玉阁", "南十字", "死兆星", "木漏茶室", "神樱",
+  "鸣神大社", "天使的馈赠", "社奉行", "勘定奉行", "天领奉行", "夜叉", "风神", "岩神", "雷神", "风之神", "岩之神", "雷之神",
+  "风神瞳", "岩神瞳", "雷神瞳", "摩拉克斯", "契约之神", "雷电影", "雷电真", "八重宫司", "宫司大人", "巴巴托斯", "玉衡星",
+  "天权星", "璃月七星", "留云借风", "削月筑阳", "理水叠山", "请仙典仪"
+]
+
+for phrase in PHRASE_LIST:
+    jieba.add_word(phrase)
+
+# Regular expression matching whitespace:
+_whitespace_re = re.compile(r'\s+')
+
+# List of (regular expression, replacement) pairs for abbreviations:
+_abbreviations = [(re.compile('\\b%s\\.' % x[0], re.IGNORECASE), x[1]) for x in [
+  ('mrs', 'misess'),
+  ('mr', 'mister'),
+  ('dr', 'doctor'),
+  ('st', 'saint'),
+  ('co', 'company'),
+  ('jr', 'junior'),
+  ('maj', 'major'),
+  ('gen', 'general'),
+  ('drs', 'doctors'),
+  ('rev', 'reverend'),
+  ('lt', 'lieutenant'),
+  ('hon', 'honorable'),
+  ('sgt', 'sergeant'),
+  ('capt', 'captain'),
+  ('esq', 'esquire'),
+  ('ltd', 'limited'),
+  ('col', 'colonel'),
+  ('ft', 'fort'),
+]]
+
+load_phrases_dict({"若陀": [["rě"], ["tuó"]], "平藏": [["píng"], ["zàng"]],
+    "派蒙": [["pài"], ["méng"]], "安柏": [["ān"], ["bó"]],
+    "一斗": [["yī"], ["dǒu"]], "重云": [["chóng"], ["yún"]], 
+    "一份": [["yí"], ["fèn"]], "一趟": [["yí"], ["tàng"]], 
+    "什么": [["shěn"], ["me"]], "一位": [["yí"], ["wèi"]], 
+     "一起": [["yì"], ["qǐ"]],  "为什么": [["wèi"],["shěn"], ["me"]],                 
+    "一直": [["yì"], ["zhí"]], "不要": [["bú"], ["yào"]], 
+    "一幅": [["yì"], ["fú"]], "一丝": [["yì"], ["sī"]],                    
+    "一切": [["yí"], ["qiè"]], "长久地": [["cháng"],["jiǔ"], ["de"]], 
+    "委婉地": [["wěi"], ["wǎn"], ["de"]], "很长": [["hěn"], ["cháng"]], 
+    "握着": [["wò"], ["zhe"]], "哦": [["o"]], 
+    "一些": [["yì"], ["xiē"]], "一只": [["yì"], ["zhī"]],                    
+    "不太": [["bú"], ["tài"]], "不过": [["bú"], ["guò"]], 
+    "不用": [["bú"], ["yòng"]], "同行": [["tóng"], ["xíng"]], 
+    "哼": [["hng"]], "哼哼": [["hng"],["hng"]], "哼哼哼": [["hng"],["hng"],["hng"]],
+    "嘿": [["hei"]], "嘿嘿": [["hei"],["hei"]], "嘿嘿嘿": [["hei"],["hei"],["hei"]],
+     "不必": [["bú"], ["bì"]],"不会": [["bú"], ["huì"]], 
+   "不敬": [["bú"], ["jìng"]],"之难": [["zhī"], ["nàn"]], 
+   "唉": [["ai"]],"第一斗": [["dì"],["yī"],["dǒu"]], 
+   "一游": [["yì"],["yóu"]], "一算": [["yí"],["suàn"]],
+   "一碰": [["yí"],["pèng"]],"我们这行": [["wǒ"],["men"],["zhè"],["háng"]],
+   "为人": [["wéi"],["rén"]], "一算": [["yí"],["suàn"]],
+    })
+
+def expand_abbreviations(text):
+  for regex, replacement in _abbreviations:
+    text = re.sub(regex, replacement, text)
+  return text
 
 
-def japanese_cleaners(text):
-    text = japanese_to_romaji_with_accent(text)
-    if re.match('[A-Za-z]', text[-1]):
-        text += '.'
-    return text
+def expand_numbers(text):
+  return normalize_numbers(text)
 
 
-def japanese_cleaners2(text):
-    return japanese_cleaners(text).replace('ts', 'ʦ').replace('...', '…')
+def lowercase(text):
+  return text.lower()
 
 
-def korean_cleaners(text):
-    '''Pipeline for Korean text'''
-    text = latin_to_hangul(text)
-    text = number_to_hangul(text)
-    text = divide_hangul(text)
-    if re.match('[\u3131-\u3163]', text[-1]):
-        text += '.'
-    return text
+def collapse_whitespace(text):
+  return re.sub(_whitespace_re, ' ', text)
 
+
+def convert_to_ascii(text):
+  return unidecode(text)
 
 def chinese_cleaners(text):
-    '''Pipeline for Chinese text'''
-    text = number_to_chinese(text)
-    text = chinese_to_bopomofo(text)
-    text = latin_to_bopomofo(text)
-    if re.match('[ˉˊˇˋ˙]', text[-1]):
-        text += '。'
-    return text
+  return " ".join(lazy_pinyin(jieba.cut(text), style=Style.TONE))
+
+def chinese_cleaners2(text):
+  text=text.replace("一斗","一抖").replace("一游","易游").replace("长久地","长久的").replace("委婉地","委婉的").replace("清楚地","清楚的").replace("清晰地","清晰的")
+  return " ".join([
+    p
+    for phone in pinyin(text, style=Style.TONE3, v_to_u=True)
+    for p in [
+      get_initials(phone[0], strict=True),
+      get_finals(phone[0][:-1], strict=True) + phone[0][-1]
+      if phone[0][-1].isdigit()
+      else get_finals(phone[0], strict=True)
+      if phone[0][-1].isalnum()
+      else phone[0],
+    ]
+    if len(p) != 0 and not p.isdigit()
+  ])
+
+def basic_cleaners(text):
+  '''Basic pipeline that lowercases and collapses whitespace without transliteration.'''
+  text = lowercase(text)
+  text = collapse_whitespace(text)
+  return text
 
 
-def zh_ja_mixture_cleaners(text):
-    chinese_texts = re.findall(r'\[ZH\].*?\[ZH\]', text)
-    japanese_texts = re.findall(r'\[JA\].*?\[JA\]', text)
-    for chinese_text in chinese_texts:
-        cleaned_text = chinese_to_romaji(chinese_text[4:-4])
-        text = text.replace(chinese_text, cleaned_text+' ', 1)
-    for japanese_text in japanese_texts:
-        cleaned_text = japanese_to_romaji_with_accent(
-            japanese_text[4:-4]).replace('ts', 'ʦ').replace('u', 'ɯ').replace('...', '…')
-        text = text.replace(japanese_text, cleaned_text+' ', 1)
-    text = text[:-1]
-    if re.match('[A-Za-zɯɹəɥ→↓↑]', text[-1]):
-        text += '.'
-    return text
+def transliteration_cleaners(text):
+  '''Pipeline for non-English text that transliterates to ASCII.'''
+  text = convert_to_ascii(text)
+  text = lowercase(text)
+  text = collapse_whitespace(text)
+  return text
 
 
-def sanskrit_cleaners(text):
-    text = text.replace('॥', '।').replace('ॐ', 'ओम्')
-    if text[-1] != '।':
-        text += ' ।'
-    return text
+def english_cleaners(text):
+  '''Pipeline for English text, including abbreviation expansion.'''
+  text = convert_to_ascii(text)
+  text = lowercase(text)
+  text = expand_abbreviations(text)
+  phonemes = phonemize(text, language='en-us', backend='espeak', strip=True)
+  phonemes = collapse_whitespace(phonemes)
+  return phonemes
 
 
-def cjks_cleaners(text):
-    chinese_texts = re.findall(r'\[ZH\].*?\[ZH\]', text)
-    japanese_texts = re.findall(r'\[JA\].*?\[JA\]', text)
-    korean_texts = re.findall(r'\[KO\].*?\[KO\]', text)
-    sanskrit_texts = re.findall(r'\[SA\].*?\[SA\]', text)
-    english_texts = re.findall(r'\[EN\].*?\[EN\]', text)
-    for chinese_text in chinese_texts:
-        cleaned_text = chinese_to_lazy_ipa(chinese_text[4:-4])
-        text = text.replace(chinese_text, cleaned_text+' ', 1)
-    for japanese_text in japanese_texts:
-        cleaned_text = japanese_to_ipa(japanese_text[4:-4])
-        text = text.replace(japanese_text, cleaned_text+' ', 1)
-    for korean_text in korean_texts:
-        cleaned_text = korean_to_lazy_ipa(korean_text[4:-4])
-        text = text.replace(korean_text, cleaned_text+' ', 1)
-    for sanskrit_text in sanskrit_texts:
-        cleaned_text = devanagari_to_ipa(sanskrit_text[4:-4])
-        text = text.replace(sanskrit_text, cleaned_text+' ', 1)
-    for english_text in english_texts:
-        cleaned_text = english_to_lazy_ipa(english_text[4:-4])
-        text = text.replace(english_text, cleaned_text+' ', 1)
-    text = text[:-1]
-    if re.match(r'[^\.,!\?\-…~]', text[-1]):
-        text += '.'
-    return text
+def english_cleaners2(text):
+  '''Pipeline for English text, including abbreviation expansion. + punctuation + stress'''
+  text = convert_to_ascii(text)
+  text = lowercase(text)
+  text = expand_abbreviations(text)
+  phonemes = phonemize(text, language='en-us', backend='espeak', strip=True, preserve_punctuation=True, with_stress=True)
+  phonemes = collapse_whitespace(phonemes)
+  return phonemes
 
-
-def cjke_cleaners(text):
-    chinese_texts = re.findall(r'\[ZH\].*?\[ZH\]', text)
-    japanese_texts = re.findall(r'\[JA\].*?\[JA\]', text)
-    korean_texts = re.findall(r'\[KO\].*?\[KO\]', text)
-    english_texts = re.findall(r'\[EN\].*?\[EN\]', text)
-    for chinese_text in chinese_texts:
-        cleaned_text = chinese_to_lazy_ipa(chinese_text[4:-4])
-        cleaned_text = cleaned_text.replace(
-            'ʧ', 'tʃ').replace('ʦ', 'ts').replace('ɥan', 'ɥæn')
-        text = text.replace(chinese_text, cleaned_text+' ', 1)
-    for japanese_text in japanese_texts:
-        cleaned_text = japanese_to_ipa(japanese_text[4:-4])
-        cleaned_text = cleaned_text.replace('ʧ', 'tʃ').replace(
-            'ʦ', 'ts').replace('ɥan', 'ɥæn').replace('ʥ', 'dz')
-        text = text.replace(japanese_text, cleaned_text+' ', 1)
-    for korean_text in korean_texts:
-        cleaned_text = korean_to_ipa(korean_text[4:-4])
-        text = text.replace(korean_text, cleaned_text+' ', 1)
-    for english_text in english_texts:
-        cleaned_text = english_to_ipa2(english_text[4:-4])
-        cleaned_text = cleaned_text.replace('ɑ', 'a').replace(
-            'ɔ', 'o').replace('ɛ', 'e').replace('ɪ', 'i').replace('ʊ', 'u')
-        text = text.replace(english_text, cleaned_text+' ', 1)
-    text = text[:-1]
-    if re.match(r'[^\.,!\?\-…~]', text[-1]):
-        text += '.'
-    return text
-
-
-def cjke_cleaners2(text):
-    chinese_texts = re.findall(r'\[ZH\].*?\[ZH\]', text)
-    japanese_texts = re.findall(r'\[JA\].*?\[JA\]', text)
-    korean_texts = re.findall(r'\[KO\].*?\[KO\]', text)
-    english_texts = re.findall(r'\[EN\].*?\[EN\]', text)
-    for chinese_text in chinese_texts:
-        cleaned_text = chinese_to_ipa(chinese_text[4:-4])
-        text = text.replace(chinese_text, cleaned_text+' ', 1)
-    for japanese_text in japanese_texts:
-        cleaned_text = japanese_to_ipa2(japanese_text[4:-4])
-        text = text.replace(japanese_text, cleaned_text+' ', 1)
-    for korean_text in korean_texts:
-        cleaned_text = korean_to_ipa(korean_text[4:-4])
-        text = text.replace(korean_text, cleaned_text+' ', 1)
-    for english_text in english_texts:
-        cleaned_text = english_to_ipa2(english_text[4:-4])
-        text = text.replace(english_text, cleaned_text+' ', 1)
-    text = text[:-1]
-    if re.match(r'[^\.,!\?\-…~]', text[-1]):
-        text += '.'
-    return text
-
-
-def thai_cleaners(text):
-    text = num_to_thai(text)
-    text = latin_to_thai(text)
-    return text
-
-
-def shanghainese_cleaners(text):
-    text = shanghainese_to_ipa(text)
-    if re.match(r'[^\.,!\?\-…~]', text[-1]):
-        text += '.'
-    return text
-
-
-def chinese_dialect_cleaners(text):
-    text = re.sub(r'\[MD\](.*?)\[MD\]',
-                  lambda x: chinese_to_ipa2(x.group(1))+' ', text)
-    text = re.sub(r'\[TW\](.*?)\[TW\]',
-                  lambda x: chinese_to_ipa2(x.group(1), True)+' ', text)
-    text = re.sub(r'\[JA\](.*?)\[JA\]',
-                  lambda x: japanese_to_ipa3(x.group(1)).replace('Q', 'ʔ')+' ', text)
-    text = re.sub(r'\[SH\](.*?)\[SH\]', lambda x: shanghainese_to_ipa(x.group(1)).replace('1', '˥˧').replace('5',
-                  '˧˧˦').replace('6', '˩˩˧').replace('7', '˥').replace('8', '˩˨').replace('ᴀ', 'ɐ').replace('ᴇ', 'e')+' ', text)
-    text = re.sub(r'\[GD\](.*?)\[GD\]',
-                  lambda x: cantonese_to_ipa(x.group(1))+' ', text)
-    text = re.sub(r'\[EN\](.*?)\[EN\]',
-                  lambda x: english_to_lazy_ipa2(x.group(1))+' ', text)
-    text = re.sub(r'\[([A-Z]{2})\](.*?)\[\1\]', lambda x: ngu_dialect_to_ipa(x.group(2), x.group(
-        1)).replace('ʣ', 'dz').replace('ʥ', 'dʑ').replace('ʦ', 'ts').replace('ʨ', 'tɕ')+' ', text)
-    text = re.sub(r'\s+$', '', text)
-    text = re.sub(r'([^\.,!\?\-…~])$', r'\1.', text)
-    return text
