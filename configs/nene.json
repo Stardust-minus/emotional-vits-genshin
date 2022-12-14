@@ -1,41 +1,41 @@
 {
   "train": {
-    "log_interval": 400,
-    "eval_interval": 2000,
-    "seed": 1234,
-    "epochs": 10000,
-    "learning_rate": 2.25e-4,
+    "log_interval": 400, //log步数
+    "eval_interval": 2000,   //验证步数
+    "seed": 1234,  //种子
+    "epochs": 10000,  //累计训练epoch
+    "learning_rate": 2.25e-4,  //学习率，和bs挂钩
     "betas": [0.8, 0.99],
     "eps": 1e-9,
-    "batch_size": 56,
-    "fp16_run": true,
-    "lr_decay": 0.999875,
-    "segment_size": 8192,
-    "init_lr_ratio": 1,
-    "warmup_epochs": 0,
+    "batch_size": 56, //bs，控制显存占用
+    "fp16_run": true,  //半精运行，打开提升速度
+    "lr_decay": 0.999875,  //学习率下降率
+    "segment_size": 8192,  //分段大小
+    "init_lr_ratio": 1,  //初始学习率倍率
+    "warmup_epochs": 0,  //起手epoch
     "c_mel": 45,
     "c_kl": 1.0
   },
   "data": {
     "training_files":"filelists/vits_filelist_genshin_xm32_emotional_train.txt.cleaned",
     "validation_files":"filelists/vits_filelist_genshin_xm32_emotional_val.txt.cleaned",
-    "text_cleaners":["chinese_cleaners2"],
+    "text_cleaners":["chinese_cleaners2"],  //cleaner
     "max_wav_value": 32768.0,
-    "sampling_rate": 48000,
+    "sampling_rate": 48000,  //采样率
     "filter_length": 1024,
-    "hop_length": 256,
-    "win_length": 1024,
+    "hop_length": 256,  //hifigan的hopsize
+    "win_length": 1024, 
     "n_mel_channels": 80,
     "mel_fmin": 0.0,
     "mel_fmax": null,
     "add_blank": true,
-    "n_speakers": 138,
+    "n_speakers": 138,  //speaker数量
     "cleaned_text": true
   },
   "model": {
-    "inter_channels": 432,
-    "hidden_channels": 432,
-    "filter_channels": 1296,
+    "inter_channels": 432,  //默认192（22050Hz），建议随采样率调整
+    "hidden_channels": 432,  //与上一项保持一致
+    "filter_channels": 1296,  //推荐为上一项的3-4倍
     "n_heads": 2,
     "n_layers": 6,
     "kernel_size": 3,
